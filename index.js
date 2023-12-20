@@ -115,6 +115,7 @@ app.post("/studentToMentor", async (req, res) => {
     const db = connection.db("class");
     const mentorsCollection = db.collection("mentors");
     const studentsCollection = db.collection("students");
+    
     const mentor = await mentorsCollection.findOne({ _id: mentorObjectId });
     const student = await studentsCollection.findOne({ _id: studentObjectId });
     if (!mentor || !student) {
@@ -134,7 +135,7 @@ app.post("/studentToMentor", async (req, res) => {
     connection.close();
     res.send({
       success: true,
-      message: 'Mentor will be assigned',
+      message: 'Mentor assigned',
       mentorName: mentor.mentorName
     });
   } catch (error) {
@@ -202,7 +203,7 @@ app.post("/change-mentor", async (req, res) => {
       { $push: { students: { studentName: student.studentName, studentMail: student.studentMail, studentId: studentObjectId } } }
     );
     connection.close();
-    res.send({ success: true, message : 'mentor will be changed for this student' });
+    res.send({ success: true, message : 'mentor changed for this student' });
   } catch (error) {
     console.log(error);
     res.status(500).send({ error: "Internal Server Error" });
@@ -242,6 +243,7 @@ app.get("/:mentorName/students", async (req, res) => {
     const mentor = await mentorsCollection.findOne({mentorName:mentorName});
 
     res.send(mentor.students)
+    
   } catch (error) {
     console.log(error)
   }
