@@ -1,271 +1,275 @@
 const express = require('express');
 const { MongoClient, ObjectId } = require("mongodb");
 const app = express()
+const cors = require("cors");
 const dotenv = require('dotenv').config();
-const port = 4005;
+const port = 3000;
 const URL = process.env.DB;
-const mentors = [];
-const students = [];
-
 app.use(express.json())
-// API to create Mentor
+app.use(
+  cors({
+    origin: "*",
+  })
+);
 
+app.get("/", function (req, res) {
+  if (req.url === "/") {
+    res.send(`
+    <h2 style="text-align:center;color:blue;">Welcome to our Zen Home Page</h2>
+    <div style="display:flex; justify-content:center;padding:20px;"> 
+    <div style=" background-color:blue; padding:20px;"> 
+    <p style="color:white;background-color:white; padding:10px 40px; margin:10px 20px; text-align:center ">
+      <a href="/mentors" style="text-decoration:none;color:black;">All Mentors list</a>
+    </p>
+
+    <p style="color:white;background-color:white; padding:10px 5px; margin:10px 20px; text-align:center ">
+    <a href="/all-students"  style="text-decoration:none;color:black;">All Students List</a></p>
+
+    <p style="color:white;background-color:white; padding:10px 5px; margin:10px 20px; text-align:center ">
+    <a href="/students-without-mentors"  style="text-decoration:none;color:black;">Students Without Mentors</a></p>
+
+    </div>
+    </div>
+    `);
+  } else {
+    res.status(404).end(`
+    <h1>OOPS</h1>
+    <p>This is the wrong page</p> 
+    `);
+  }
+});
+
+
+// 1. write API to create Mentor
 app.post("/create-mentor", async (req, res) => {
-    try {
-        const connection = await MongoClient.connect(URL)
-        const db = connection.db("class")
-        const mentor = await db.collection("mentors").insertOne({
-            mentorName: req.body.mentorName,
-            mentorMail: req.body.mentorMail,
-            students: []
-        })
-        mentors.push(mentor)
-        res.send({
-            message: 'Mentor created successfully',
-            mentor: {
-                mentorId: mentor.insertedId.toString(),
-                mentorName: req.body.mentorName,
-                mentorMail: req.body.mentorMail,
-                students: []
-            }
-        });
-    } catch (error) {
-        console.log(error)
-    }
+  try {
+    const {mentorName,mentorMail} = req.body
+    const connection = await MongoClient.connect(URL)
+    const db = connection.db("class")
+    const result = await db.collection("mentors").insertOne({
+      mentorName: mentorName,
+      mentorMail: mentorMail,
+      students: []
+    })
+    res.send({
+      message: 'Mentor created successfully',
+      result : result,  
+    });
+  } catch (error) {
+    console.log(error)
+    res.status(500).json({
+      message : 'something went wrong please try again later'
+    })
+  }
 })
 
 
-// ------------------------------------------------------------------
-
-
+//get all mentors
 app.get("/mentors", async (req, res) => {
-    try {
-        const connection = await MongoClient.connect(URL);
-        const db = connection.db("class");
-        const mentorsData = await db.collection("mentors").find({}).toArray();
-        const mentors = mentorsData.map((item) => ({
-            mentorId: item._id.toString(),
-            mentorName: item.mentorName,
-            mentorMail: item.mentorMail,
-            students: []
-        }));
-        connection.close();
-        res.send(mentors);
-    } catch (error) {
-        console.log(error);
-        res.status(500).send({ error: "Internal Server Error" });
-    }
+  try {
+    const connection = await MongoClient.connect(URL);
+    const db = connection.db("class");
+    const mentorsData = await db.collection("mentors").find({}).toArray();
+    connection.close();
+    res.send(mentorsData);
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({ error: "Internal Server Error" });
+  }
 });
-// ------------------------------------------------------
 
-// API to create Student
 
+//2. write API to create Student
 app.post("/create-student", async (req, res) => {
-    try {
-        const newStudent = {
-            studentName: req.body.studentName,
-            studentMail: req.body.studentMail,
-            oldMentor: null,
-            currentMentor: null
-        };
-        students.push(newStudent);
-
-        const connection = await MongoClient.connect(URL);
-        const db = connection.db("class");
-
-        const student = await db.collection('students').insertOne(newStudent);
-        connection.close();
-
-        res.send({
-            message: 'Student created successfully',
-            newStudent: {
-                studentId: student.insertedId.toString(),
-                studentName: req.body.studentName,
-                studentMail: req.body.studentMail,
-                oldMentor: null,
-                currentMentor: null
-            }
-        });
-    } catch (error) {
-        console.log(error);
-        res.status(500).send({ error: "Internal Server Error" });
-    }
+  try {
+    const {studentName,studentMail} = req.body;
+    const newStudent = {
+      studentName: studentName,
+      studentMail: studentMail,
+      oldMentor: null,
+      currentMentor: null
+    };
+    const connection = await MongoClient.connect(URL);
+    const db = connection.db("class");
+    const result = await db.collection('students').insertOne(newStudent);
+    connection.close();
+    res.send({
+      message: 'Student created successfully',
+      result : result
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({ error: "Internal Server Error" });
+  }
 });
 
-// API to Assign a student to Mentor
 
+// 3. Write API to Assign a student to Mentor
+// a)Select a mentor and Add multiple Students
 app.post("/studentToMentor", async (req, res) => {
-    try {
-        const mentorId = req.body.mentorId;
-        const studentId = req.body.studentId;
-
-        const mentorObjectId = new ObjectId(mentorId);
-        const studentObjectId = new ObjectId(studentId);
-
-        const connection = await MongoClient.connect(URL);
-        const db = connection.db("class");
-        const mentorsCollection = db.collection("mentors");
-        const studentsCollection = db.collection("students");
-
-        const mentor = await mentorsCollection.findOne({ _id: mentorObjectId });
-        const student = await studentsCollection.findOne({ _id: studentObjectId });
-
-        if (!mentor || !student) {
-            res.status(404).send({ error: "Mentor or student not found" });
-            return;
-        }
-
-
-        await studentsCollection.updateOne(
-            { _id: studentObjectId },
-            { $set: { oldMentor: student.currentMentor, currentMentor: mentor.mentorName } }
-        );
-
-
-        await mentorsCollection.updateOne(
-            { _id: mentorObjectId },
-            { $push: { students: { studentName: student.studentName, studentMail: student.studentMail, studentId: studentObjectId } } }
-        );
-
-        connection.close();
-
-        res.send({ success: true, mentor });
-    } catch (error) {
-        console.log(error);
-        res.status(500).send({ error: "Internal Server Error" });
+  try {
+    const {mentorId,studentId} = req.body;
+    const mentorObjectId = new ObjectId(mentorId);
+    const studentObjectId = new ObjectId(studentId);
+    const connection = await MongoClient.connect(URL);
+    const db = connection.db("class");
+    const mentorsCollection = db.collection("mentors");
+    const studentsCollection = db.collection("students");
+    const mentor = await mentorsCollection.findOne({ _id: mentorObjectId });
+    const student = await studentsCollection.findOne({ _id: studentObjectId });
+    if (!mentor || !student) {
+      res.status(404).send({ error: "Mentor or student not found" });
+      return;
     }
+    // UPDATE PARTICULAR STUDENT
+    await studentsCollection.updateOne(
+      { _id: studentObjectId },
+      { $set: { oldMentor: student.currentMentor, currentMentor: mentor.mentorName } }
+    );
+    //ASSIGN MENTOR
+    await mentorsCollection.updateOne(
+      { _id: mentorObjectId },
+      { $push: { students: { studentName: student.studentName, studentMail: student.studentMail, studentId: studentObjectId } } }
+    );
+    connection.close();
+    res.send({
+      success: true,
+      message: 'Mentor will be assigned',
+      mentorName: mentor.mentorName
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({ error: "Internal Server Error" });
+  }
 });
 
-// API to A student who has a mentor should not be shown in List
 
-app.get("/students", async (req, res) => {
-    try {
-        const connection = await MongoClient.connect(URL);
-        const db = connection.db("class");
-        const studentsData = await db.collection("students").find({}).toArray();
-        const students = studentsData.map((item) => ({
-            studentId: item._id.toString(),
-            studentName: item.studentName,
-            studentMail: item.studentMail,
-            oldMentor: item.oldMentor,
-            currentMentor: item.currentMentor
-        }));
-        connection.close();
-        const nonMentorStudent = students.find(student => student.oldMentor === null || student.currentMentor === null);
+//b)API to A student who has a mentor should not be shown in List
 
-        if (nonMentorStudent) {
-            res.send(nonMentorStudent);
-        } else {
-            res.send({ message: "All students assigned for mentors" });
-        }
-    } catch (error) {
-        console.log(error);
-        res.status(500).send({ error: "Internal Server Error" });
+app.get("/students-without-mentors", async (req, res) => {
+  try {
+    const connection = await MongoClient.connect(URL);
+    const db = connection.db("class");
+    const studentsData = await db.collection("students").find({
+      oldMentor: { $eq: null },
+      currentMentor: { $eq: null }
+    }).toArray();
+    const students = studentsData.map((item) => ({
+      studentId: item._id.toString(),
+      studentName: item.studentName,
+      studentMail: item.studentMail,
+      oldMentor: item.oldMentor,
+      currentMentor: item.currentMentor
+    }));
+    connection.close();
+
+    if (students.length > 0) {
+      res.send(students);
+    } else {
+      res.send({ message: "No students with both oldMentor and currentMentor found" });
     }
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({ error: "Internal Server Error" });
+  }
 });
 
-// API to Assign or Change Mentor for particular Student
-// Select One Student and Assign one Mentor
 
+
+// 4. Write API to Assign or Change Mentor for particular Student
+// Select a Student and Assign a Mentor
 app.post("/change-mentor", async (req, res) => {
-    try {
-        const mentorId = req.body.mentorId;
-        const studentId = req.body.studentId;
-        const newcurrentMentor = req.body.currentMentor;
-        const mentorObjectId = new ObjectId(mentorId);
-        const studentObjectId = new ObjectId(studentId);
-
-        const connection = await MongoClient.connect(URL);
-        const db = connection.db("class");
-        const mentorsCollection = db.collection("mentors");
-        const studentsCollection = db.collection("students");
-
-        const mentor = await mentorsCollection.findOne({ _id: mentorObjectId });
-        const student = await studentsCollection.findOne({ _id: studentObjectId });
-
-        if (!mentor || !student) {
-            res.status(404).send({ error: "Mentor or student not found" });
-            return;
-        }
-
-
-        await studentsCollection.updateOne(
-            { _id: studentObjectId },
-            { $set: { oldMentor: student.currentMentor, currentMentor: newcurrentMentor } }
-        );
-
-
-        await mentorsCollection.updateOne(
-            { _id: mentorObjectId },
-            { $push: { students: { studentName: student.studentName, studentMail: student.studentMail, studentId: studentObjectId } } }
-        );
-
-        connection.close();
-
-        res.send({ success: true, student });
-    } catch (error) {
-        console.log(error);
-        res.status(500).send({ error: "Internal Server Error" });
+  try {
+    const {mentorId,studentId,currentMentor:newcurrentMentor}=req.body
+    const mentorObjectId = new ObjectId(mentorId);
+    const studentObjectId = new ObjectId(studentId);
+    const connection = await MongoClient.connect(URL);
+    const db = connection.db("class");
+    const mentorsCollection = db.collection("mentors");
+    const studentsCollection = db.collection("students");
+    const mentor = await mentorsCollection.findOne({ _id: mentorObjectId });
+    const student = await studentsCollection.findOne({ _id: studentObjectId });
+    if (!mentor || !student) {
+      res.status(404).send({ error: "Mentor or student not found" });
+      return;
     }
+    await studentsCollection.updateOne(
+      { _id: studentObjectId },
+      { $set: { oldMentor: student.currentMentor, currentMentor: newcurrentMentor } }
+    );
+    await mentorsCollection.updateOne(
+      { _id: mentorObjectId },
+      { $push: { students: { studentName: student.studentName, studentMail: student.studentMail, studentId: studentObjectId } } }
+    );
+    connection.close();
+    res.send({ success: true, message : 'mentor will be changed for this student' });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({ error: "Internal Server Error" });
+  }
 });
 
-
+// get all students
 app.get("/all-students", async (req, res) => {
-    try {
-        const connection = await MongoClient.connect(URL);
-        const db = connection.db("class");
-        const studentsData = await db.collection("students").find({}).toArray();
-        const students = studentsData.map((item) => ({
-            studentId: item._id.toString(),
-            studentName: item.studentName,
-            studentMail: item.studentMail,
-            oldMentor: item.oldMentor,
-            currentMentor: item.currentMentor
-        }));
-        connection.close();
-        res.send(students);
-    } catch (error) {
-        console.log(error);
-        res.status(500).send({ error: "Internal Server Error" });
-    }
+  try {
+    const connection = await MongoClient.connect(URL);
+    const db = connection.db("class");
+    const studentsData = await db.collection("students").find({}).toArray();
+    const students = studentsData.map((item) => ({
+      studentId: item._id.toString(),
+      studentName: item.studentName,
+      studentMail: item.studentMail,
+      oldMentor: item.oldMentor,
+      currentMentor: item.currentMentor
+    }));
+    connection.close();
+    res.send(students);
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({ error: "Internal Server Error" });
+  }
 });
 
 
-// API to show all students for a particular mentor
-
+// 5. Write API to show all students for a particular mentor
 app.get("/:mentorName/students", async (req, res) => {
 
-    try {
-        const mentorName = req.params.mentorName;
+  try {
+    const mentorName = req.params.mentorName;
+    const connection = await MongoClient.connect(URL);
+    const db = connection.db("class");
+    const mentorsCollection = db.collection("mentors");
+    const mentor = await mentorsCollection.findOne({mentorName:mentorName});
 
-   
-
-        const connection = await MongoClient.connect(URL);
-        const db = connection.db("class");
-        const mentorsCollection = db.collection("mentors");
-        const mentor = await mentorsCollection.findOne({});
-
-        res.send(mentor.students)
-    } catch (error) {
-        console.log(error)
-    }
+    res.send(mentor.students)
+  } catch (error) {
+    console.log(error)
+  }
 })
 
-    //  API to show the previously assigned mentor for a particular student.
+
+// 6. Write API to show the previously assigned mentor for a particular student
+app.get("/oldmentor-by-student/:studentName", async (req, res) => {
+  try {
+    const {studentName} = req.params;
+    const connection = await MongoClient.connect(URL);
+    const db = connection.db("class");
+    const studentsCollection = db.collection("students");
+    const student = await studentsCollection.findOne({ studentName: studentName });
+    if(student.oldMentor === null) {
+      res.send({
+        message : 'No older mentor for this student'
+      })
+    }else{
+      res.send({ oldMentor: student.oldMentor })
+    }
+  } catch (error) {
+    console.log(error)
+  }
+})
 
 
-    app.get("/oldmentor-by-student/:studentName", async (req, res) => {
-        try {
-            const studentName = req.params.studentName;
-       
-            const connection = await MongoClient.connect(URL);
-            const db = connection.db("class");
-            const studentsCollection = db.collection("students");
-            const student = await studentsCollection.findOne({studentName : studentName });
 
-            res.send({ oldMentor: student.oldMentor})
-        } catch (error) {
-            console.log(error)
-        }
-    })
-app.listen(port)
+app.listen(port, () => {
+  console.log("server started at " + port);
+});
